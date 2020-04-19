@@ -12,6 +12,10 @@ type DriveChecker interface {
 	LoadDriveState(config DriveConfig) (hasChanged bool, err error)
 }
 
+type Drive struct {
+	Checker DriveChecker
+}
+
 type DriveConfig struct {
 	DriveID string
 	State   *drivestate.DriveState
@@ -35,10 +39,10 @@ func NewConfig(driveID string) DriveConfig {
 }
 
 // GetStoreIDByPostalCode fetch storeIDs by postal code
-func GetStoreIDByPostalCode(drive DriveChecker, postalCode string) ([]string, error) {
+func (d Drive) GetStoreIDByPostalCode(postalCode string) ([]string, error) {
 	storeIds := []string{}
 
-	stores, err := drive.GetStoreByPostalCode(postalCode)
+	stores, err := d.Checker.GetStoreByPostalCode(postalCode)
 	if err != nil {
 		return storeIds, err
 	}
@@ -51,11 +55,11 @@ func GetStoreIDByPostalCode(drive DriveChecker, postalCode string) ([]string, er
 }
 
 // LoadIntervalDriveState fetch each tick the drive state config
-func LoadIntervalDriveState(drive DriveChecker, config DriveConfig, tick *time.Ticker, done chan bool) {
+func (d Drive) LoadIntervalDriveState(config DriveConfig, tick *time.Ticker, done chan bool) {
 	log.Printf("Démarrage du check de créneau %v", config.DriveID)
 
 	// premier appel sans attendre le premier tick
-	if _, err := drive.LoadDriveState(config); err != nil {
+	if _, err := d.Checker.LoadDriveState(config); err != nil {
 		log.Print(err)
 	}
 
@@ -63,7 +67,7 @@ func LoadIntervalDriveState(drive DriveChecker, config DriveConfig, tick *time.T
 		select {
 		case <-tick.C:
 			// a chaque tick du timer on lance une recherche de state
-			if _, err := drive.LoadDriveState(config); err != nil {
+			if _, err := d.Checker.LoadDriveState(config); err != nil {
 				log.Print(err)
 			}
 		case <-done:
@@ -80,12 +84,12 @@ func GetDriveState(driveID string) *drivestate.DriveState {
 }
 
 // NewDriveHandler add a new drive handler
-func NewDriveHandler(drive DriveChecker, driveID string) {
+func (d Drive) NewDriveHandler(driveID string) {
 	config := NewConfig(driveID)
 	drivestate.NewDriveState(driveID, config.State)
 
 	tick := time.NewTicker(2 * time.Minute)
 	done := make(chan bool)
 
-	LoadIntervalDriveState(drive, config, tick, done)
+	d.LoadIntervalDriveState(config, tick, done)
 }
